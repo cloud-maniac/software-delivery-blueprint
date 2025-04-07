@@ -104,6 +104,9 @@ TIMESTAMP=$(date "+%Y%m%d%H%M%S")
 SA_FOR_API_KEY="api-key-sa-${TIMESTAMP}"
 GITHUB_SECRET_NAME="github-token"
 CLOUD_DEPLOY="cloud-deploy-sa"
+CLOUD_BUILD="cloud-build-sa"
+CLOUD_BUILD_SA="${CLOUD_BUILD}@${PROJECT_ID}.iam.gserviceaccount.com"
+CLOUD_BUILD_SA_PATH="projects/${PROJECT_ID}/serviceAccounts/${CLOUD_BUILD_SA}"
 CLOUD_DEPLOY_SA="${CLOUD_DEPLOY}@${PROJECT_ID}.iam.gserviceaccount.com"
 TEMPLATE_APP_REPO="app-factory-template"
 CUSTOM_SA="devops-sa-${PROJECT_ID}"
@@ -212,15 +215,15 @@ create_webhook () {
 
     title_no_wait "Creating a webhook trigger ..."
     if [ "${trigger}" = "${TEAM_TRIGGER_NAME}" ]; then
-        print_and_execute "gcloud alpha builds triggers create webhook --name=\"${TEAM_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/add-team-tf-files-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REPO_NAME=${APP_SETUP_REPO},_TEAM_NAME=\$(body.message.team),_GITHUB_ORG=${GITHUB_ORG},_GITHUB_USER=${GITHUB_USER}'"
+        print_and_execute "gcloud builds triggers create webhook --name=\"${TEAM_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/add-team-tf-files-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REPO_NAME=${APP_SETUP_REPO},_TEAM_NAME=\$(body.message.team),_GITHUB_ORG=${GITHUB_ORG},_GITHUB_USER=${GITHUB_USER}' --service-account=${CLOUD_BUILD_SA_PATH}"
     elif [ "${trigger}" = "${APP_TRIGGER_NAME}" ]; then
-        print_and_execute "gcloud alpha builds triggers create webhook --name=\"${APP_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/add-app-tf-files-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REPO_NAME=${APP_SETUP_REPO},_APP_NAME=\$(body.message.app),_APP_RUNTIME=\$(body.message.runtime),_GITHUB_ORG=${GITHUB_ORG},_GITHUB_USER=${GITHUB_USER},_REGION=${REGION},_TRIGGER_TYPE=\$(body.message.trigger_type),_GITHUB_TEAM=\$(body.message.github_team)'"
+        print_and_execute "gcloud builds triggers create webhook --name=\"${APP_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/add-app-tf-files-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REPO_NAME=${APP_SETUP_REPO},_APP_NAME=\$(body.message.app),_APP_RUNTIME=\$(body.message.runtime),_GITHUB_ORG=${GITHUB_ORG},_GITHUB_USER=${GITHUB_USER},_REGION=${REGION},_TRIGGER_TYPE=\$(body.message.trigger_type),_GITHUB_TEAM=\$(body.message.github_team)' --service-account=${CLOUD_BUILD_SA_PATH}"
     elif [ "${trigger}" = "${PLAN_TRIGGER_NAME}" ]; then
-        print_and_execute "gcloud alpha builds triggers create webhook --name=\"${PLAN_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/tf-plan-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_GITHUB_USER=${GITHUB_USER},_REPO_NAME=${APP_SETUP_REPO},_GITHUB_ORG=${GITHUB_ORG}'"
+        print_and_execute "gcloud builds triggers create webhook --name=\"${PLAN_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/tf-plan-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_GITHUB_USER=${GITHUB_USER},_REPO_NAME=${APP_SETUP_REPO},_GITHUB_ORG=${GITHUB_ORG}' --service-account=${CLOUD_BUILD_SA_PATH}"
     elif [ "${trigger}" = "${APPLY_TRIGGER_NAME}" ]; then
-        print_and_execute "gcloud alpha builds triggers create webhook --name=\"${APPLY_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/tf-apply-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_GITHUB_USER=${GITHUB_USER},_REPO_NAME=${APP_SETUP_REPO},_GITHUB_ORG=${GITHUB_ORG}'"
+        print_and_execute "gcloud builds triggers create webhook --name=\"${APPLY_TRIGGER_NAME}\"  --inline-config=\"${BASE_DIR}/${TEMPLATE_APP_REPO}/tf-apply-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_GITHUB_USER=${GITHUB_USER},_REPO_NAME=${APP_SETUP_REPO},_GITHUB_ORG=${GITHUB_ORG}' --service-account=${CLOUD_BUILD_SA_PATH}"
     elif [ "${trigger}" = "${INFRA_TRIGGER_NAME}" ]; then
-        print_and_execute "gcloud alpha builds triggers create webhook --name=\"${INFRA_TRIGGER_NAME}\"  --inline-config=\"${TEMP_DIR}/${repo}/cloudbuild-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REF=\$(body.ref),_REPO=\$(body.repository.full_name),_COMMIT_MSG=\$(body.head_commit.message)'  --subscription-filter='(!_COMMIT_MSG.matches(\"IGNORE\"))'"
+        print_and_execute "gcloud builds triggers create webhook --name=\"${INFRA_TRIGGER_NAME}\"  --inline-config=\"${TEMP_DIR}/${repo}/cloudbuild-webhook.yaml\" --secret=${SECRET_PATH} --substitutions='_REF=\$(body.ref),_REPO=\$(body.repository.full_name),_COMMIT_MSG=\$(body.head_commit.message)'  --subscription-filter='(!_COMMIT_MSG.matches(\"IGNORE\"))' --service-account=${CLOUD_BUILD_SA_PATH}"
     else
         title_no_wait "Invalid trigger name passed"
         print_and_execute "exit 1"
@@ -428,6 +431,7 @@ apikeys.googleapis.com \
 cloudidentity.googleapis.com \
 gkehub.googleapis.com \
 anthosconfigmanagement.googleapis.com \
+anthos.googleapis.com \
 clouddeploy.googleapis.com \
 multiclusteringress.googleapis.com \
 multiclusterservicediscovery.googleapis.com \
@@ -437,41 +441,50 @@ serviceusage.googleapis.com"
 print_and_execute "sleep 10"
 
 #title_no_wait "Add Cloud build service account as billing account user on the org"
-#print_and_execute "gcloud organizations add-iam-policy-binding ${ORG_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/billing.user --condition=None"
+#print_and_execute "gcloud organizations add-iam-policy-binding ${ORG_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/billing.user --condition=None"
 
 #title_no_wait "Give cloudbuild service account projectCreator role at Org level..."
-#print_and_execute "gcloud organizations add-iam-policy-binding ${ORG_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/resourcemanager.projectCreator --condition=None"
+#print_and_execute "gcloud organizations add-iam-policy-binding ${ORG_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/resourcemanager.projectCreator --condition=None"
+print_and_execute "gcloud iam service-accounts create ${CLOUD_BUILD}  --display-name \"API Key ${SA_FOR_API_KEY}\""
+
+title_no_wait "Give cloudbuild service account cloudbuild editor role on project ${PROJECT_ID} ..."
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/cloudbuild.builds.editor"
+
 
 title_no_wait "Give cloudbuild service account secretmanager admin role on project ${PROJECT_ID} ..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/secretmanager.admin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/secretmanager.admin"
 
 title_no_wait "Give cloudbuild service account security admin role to be able to set policy..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/iam.securityAdmin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/iam.securityAdmin"
 
 title_no_wait "Give cloudbuild service account role to be able to create VPC..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/servicenetworking.serviceAgent"
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/compute.networkAdmin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/servicenetworking.serviceAgent"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/compute.networkAdmin"
 
 title_no_wait "Give cloudbuild service account role to create new service accounts..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/iam.serviceAccountAdmin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/iam.serviceAccountAdmin"
 
 title_no_wait "Give cloudbuild service account role to create GKE cluster..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/container.clusterAdmin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/container.clusterAdmin"
 
 title_no_wait "Give cloudbuild service account role to associate SA with GKE nodes..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/iam.serviceAccountUser"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/iam.serviceAccountUser"
 
 title_no_wait "Give cloudbuild service account role to create hub membership..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/gkehub.editor"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/gkehub.editor"
 
 title_no_wait "Give cloudbuild service account role to create Cloud Deploy targets..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/clouddeploy.operator"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/clouddeploy.operator"
 
 title_no_wait "Give cloudbuild service account role to create and destroy GCS bucket..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/storage.admin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/storage.admin"
 
 title_no_wait "Give cloudbuild service account role to create APIkeys..."
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/serviceusage.apiKeysAdmin"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/serviceusage.apiKeysAdmin"
+
+title_no_wait "Give cloudbuild service account role to write logs..."
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID}  --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/logging.logWriter"
+
 title_no_wait "Creating a service account for Cloud Deploy"
 print_and_execute "gcloud iam service-accounts create \"${CLOUD_DEPLOY}\"  --display-name \"Service Account for CloudDeploy\""
 
@@ -513,7 +526,7 @@ elif [[ "${TRIGGER_TYPE,,}" == "github" ]]; then
     Click Done. \
     "
     title_no_wait "Creating Cloud Build trigger..."
-    print_and_execute "gcloud beta builds triggers create github --name=\"${INFRA_TRIGGER_NAME}\"  --repo-owner=\"${GITHUB_ORG}\" --repo-name=\"${INFRA_SETUP_REPO}\" --branch-pattern=\".*\" --build-config=\"cloudbuild-github.yaml\""
+    print_and_execute "gcloud builds triggers create github --name=\"${INFRA_TRIGGER_NAME}\"  --repo-owner=\"${GITHUB_ORG}\" --repo-name=\"${INFRA_SETUP_REPO}\" --branch-pattern=\".*\" --build-config=\"cloudbuild-github.yaml\" --service-account=\"${CLOUD_BUILD_SA_PATH}\""
 fi
 
 #Perform sed operation to replace templated variables with real values
@@ -635,7 +648,7 @@ do
 done
 
 title_no_wait "Give service usage consumer access to Cloud Build account"
-print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com --role=roles/serviceusage.serviceUsageConsumer"
+print_and_execute "gcloud projects add-iam-policy-binding ${PROJECT_ID} --member=serviceAccount:${CLOUD_BUILD_SA} --role=roles/serviceusage.serviceUsageConsumer"
 
 APP_TF_BUCKET="${PROJECT_ID}-app-factory-tf"
 
@@ -676,23 +689,21 @@ elif [[ "${TRIGGER_TYPE,,}" == "github" ]]; then
     "
 
     title_no_wait "Creating Cloud Build trigger to add terraform files to create github team..."
-    print_and_execute "gcloud alpha builds triggers create manual --name=\"${TEAM_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --build-config=\"add-team-tf-files-github-trigger.yaml\" --branch=\"main\" \
-    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_ORG\"=\"${GITHUB_ORG}\",\"_GITHUB_USER\"=\"${GITHUB_USER}\",\"_TEAM_NAME\"=\"\" "
+    print_and_execute "gcloud builds triggers create manual --name=\"${TEAM_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --build-config=\"add-team-tf-files-github-trigger.yaml\" --branch=\"main\" \
+    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_ORG\"=\"${GITHUB_ORG}\",\"_GITHUB_USER\"=\"${GITHUB_USER}\",\"_TEAM_NAME\"=\"\" --service-account=\"${CLOUD_BUILD_SA_PATH}\""
 
     title_no_wait "Creating Cloud Build trigger to add terraform files to create appliction..."
-    #print_and_execute "gcloud alpha builds triggers create manual --name=\"${APP_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --build-config=\"add-app-tf-files-github-trigger.yaml\" --branch=\"main\" \
-    #--repo-type=\"GITHUB\" --substitutions \"_APP_NAME\"=\"\",\"_APP_RUNTIME\"=\"\",\"_FOLDER_ID\"=\"${FOLDER_ID}\",\"_GITHUB_ORG\"=\"${GITHUB_ORG}\",\"_GITHUB_USER\"=\"${GITHUB_USER}\",\"_INFRA_PROJECT_ID\"=\"${INFRA_SETUP_PROJECT}\",\"_SA_TO_IMPERSONATE\"=\"${CUSTOM_SA}@${PROJECT_ID}.iam.gserviceaccount.com\",\"_GITHUB_SECRET_NAME\"=\"${GITHUB_SECRET_NAME}\",\"_REGION\"=\"${REGION}\",\"_TRIGGER_TYPE\"=\"webhook\",\"_GITHUB_TEAM\"=\"\""
-    print_and_execute "gcloud alpha builds triggers create manual --name=\"${APP_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --build-config=\"add-app-tf-files-github-trigger.yaml\" --branch=\"main\" \
-    --repo-type=\"GITHUB\" --substitutions \"_APP_NAME\"=\"\",\"_APP_RUNTIME\"=\"\",\"_GITHUB_ORG\"=\"${GITHUB_ORG}\",\"_GITHUB_USER\"=\"${GITHUB_USER}\",\"_INFRA_PROJECT_ID\"=\"${INFRA_SETUP_PROJECT}\",\"_REGION\"=\"${REGION}\",\"_TRIGGER_TYPE\"=\"webhook\",\"_GITHUB_TEAM\"=\"\""
+    print_and_execute "gcloud builds triggers create manual --name=\"${APP_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --build-config=\"add-app-tf-files-github-trigger.yaml\" --branch=\"main\" \
+    --repo-type=\"GITHUB\" --substitutions \"_APP_NAME\"=\"\",\"_APP_RUNTIME\"=\"\",\"_GITHUB_ORG\"=\"${GITHUB_ORG}\",\"_GITHUB_USER\"=\"${GITHUB_USER}\",\"_INFRA_PROJECT_ID\"=\"${INFRA_SETUP_PROJECT}\",\"_REGION\"=\"${REGION}\",\"_TRIGGER_TYPE\"=\"webhook\",\"_GITHUB_TEAM\"=\"\" --service-account=\"${CLOUD_BUILD_SA_PATH}\""
 
 
     title_no_wait "Creating Cloud Build trigger for tf-plan..."
-    print_and_execute "gcloud alpha builds triggers create manual --name=\"${PLAN_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --branch=\"main\" --build-config=\"tf-plan-github-trigger.yaml\" \
-    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_USER\"=\"${GITHUB_USER}\" "
+    print_and_execute "gcloud builds triggers create manual --name=\"${PLAN_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --branch=\"main\" --build-config=\"tf-plan-github-trigger.yaml\" \
+    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_USER\"=\"${GITHUB_USER}\" --service-account=\"${CLOUD_BUILD_SA_PATH}\""
 
     title_no_wait "Creating Cloud Build trigger for tf-apply..."
-    print_and_execute "gcloud alpha builds triggers create manual --name=\"${APPLY_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --branch=\"main\" --build-config=\"tf-apply-github-trigger.yaml\" \
-    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_USER\"=\"${GITHUB_USER}\" "
+    print_and_execute "gcloud builds triggers create manual --name=\"${APPLY_TRIGGER_NAME}\" --repo=\"https://github.com/${GITHUB_ORG}/${APP_SETUP_REPO}\" --branch=\"main\" --build-config=\"tf-apply-github-trigger.yaml\" \
+    --repo-type=\"GITHUB\" --substitutions \"_GITHUB_USER\"=\"${GITHUB_USER}\" --service-account=\"${CLOUD_BUILD_SA_PATH}\""
 fi
 
 title_no_wait "Removing temp directory"
